@@ -179,7 +179,7 @@ class Database(object):
             pass
 
 class Collection(object):
-    def __init__(self, db, name):
+    def __init__(self, db, name, create=False, **kwargs):
         super(Collection, self).__init__()
         self.name = name
         self._Collection__database = db
@@ -258,16 +258,28 @@ class Collection(object):
         # TODO: this looks a little too naive...
         return dict((k, v) for k, v in iteritems(doc) if not k.startswith("$"))
 
-    def find(self, spec = None, fields = None, filter = None, sort = None, timeout = True, limit = 0):
+    def find(self, *args, **kwargs):
+        def parse_args(arg_index, kwargs_name, default):
+            if len(args) > arg_index:
+                return args[arg_index]
+            else:
+                return kwargs.get(kwargs_name, default)
+        spec = parse_args(0, 'spec', None)
+        fields = parse_args(1, 'fields', None)
+        filter = parse_args(2, 'filter', None)
+        sort = parse_args(3, 'sort', None)
+        timeout = parse_args(4, 'timeout', True)
+        limit = parse_args(5, 'limit', 0)
+
         if filter is not None:
             _print_deprecation_warning('filter', 'spec')
-            if spec is None:
-                spec = filter
+        if spec is None:
+            spec = filter
         dataset = (self._copy_only_fields(document, fields) for document in self._iter_documents(spec))
         if sort:
             for sortKey, sortDirection in reversed(sort):
                 dataset = iter(sorted(dataset, key = lambda x: x[sortKey], reverse = sortDirection < 0))
-        return Cursor(dataset, limit=limit)
+        return Cursor(dataset, *args, **kwargs)
 
     def _copy_only_fields(self, doc, fields):
         """Copy only the specified fields."""
@@ -511,9 +523,17 @@ class Collection(object):
 
 
 class Cursor(object):
-    def __init__(self, dataset, limit=0):
+    def __init__(self, collection, spec=None, fields=None, skip=0, limit=0,
+                 timeout=True, snapshot=False, tailable=False, sort=None,
+                 max_scan=None, as_class=None, slave_okay=False,
+                 await_data=False, partial=False, manipulate=True,
+                 read_preference=0, tag_sets=[{}],
+                 secondary_acceptable_latency_ms=None, exhaust=False,
+                 _must_use_master=False, _uuid_subtype=None,
+                 _first_batch=None, _cursor_id=None,
+                 **kwargs):
         super(Cursor, self).__init__()
-        self._dataset = dataset
+        self._dataset = collection
         self._limit = limit if limit != 0 else None #pymongo limit defaults to 0, returning everything
         self._skip = None
     def __iter__(self):
